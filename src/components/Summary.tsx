@@ -25,13 +25,13 @@ export function Summary() {
         </h3>
         <div className="flex bg-panel2 rounded-lg p-0.5 text-xs">
           <button
-            className={`px-3 py-1 rounded-md ${displayMode === 'real' ? 'bg-accent text-white' : 'text-gray-400'}`}
+            className={`px-3 py-1 rounded-md ${displayMode === 'real' ? 'bg-accent text-white' : 'text-muted'}`}
             onClick={() => setDisplayMode('real')}
           >
             Today's $
           </button>
           <button
-            className={`px-3 py-1 rounded-md ${displayMode === 'nominal' ? 'bg-accent text-white' : 'text-gray-400'}`}
+            className={`px-3 py-1 rounded-md ${displayMode === 'nominal' ? 'bg-accent text-white' : 'text-muted'}`}
             onClick={() => setDisplayMode('nominal')}
           >
             Nominal $
@@ -82,9 +82,9 @@ function Stat({
   const toneClass = tone === 'good' ? 'text-good' : tone === 'warn' ? 'text-warn' : 'text-accent';
   return (
     <div className="bg-panel2 rounded-lg p-3">
-      <div className="text-xs text-gray-400">{label}</div>
+      <div className="text-xs text-muted">{label}</div>
       <div className={`text-2xl font-bold mt-1 ${toneClass}`}>{value}</div>
-      {sub && <div className="text-xs text-gray-500 mt-1">{sub}</div>}
+      {sub && <div className="text-xs text-dim mt-1">{sub}</div>}
     </div>
   );
 }

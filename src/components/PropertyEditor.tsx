@@ -34,7 +34,7 @@ export function PropertyEditor() {
       </div>
 
       {properties.length === 0 ? (
-        <p className="text-xs text-gray-500">
+        <p className="text-xs text-dim">
           No properties added. Click + Home or + Investment to model property in your projection.
         </p>
       ) : (
@@ -71,7 +71,7 @@ function PropertyCard({ property }: { property: Property }) {
         <input
           value={property.label}
           onChange={(e) => updateProperty(property.id, { label: e.target.value })}
-          className="bg-transparent text-sm font-semibold text-white outline-none border-b border-transparent focus:border-accent w-40"
+          className="bg-transparent text-sm font-semibold text-text outline-none border-b border-transparent focus:border-accent w-40"
         />
         <div className="flex items-center gap-2">
           <span className={`text-[10px] px-2 py-0.5 rounded-full ${
@@ -83,7 +83,7 @@ function PropertyCard({ property }: { property: Property }) {
           </span>
           <button
             onClick={() => removeProperty(property.id)}
-            className="text-xs text-gray-400 hover:text-red-400"
+            className="text-xs text-muted hover:text-red-500"
           >
             ✕
           </button>
@@ -199,11 +199,11 @@ function Select({
 }) {
   return (
     <div>
-      <label className="text-xs text-gray-400 block mb-1">{label}</label>
+      <label className="text-xs text-muted block mb-1">{label}</label>
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full bg-bg border border-border rounded-md px-2 py-1 text-sm text-white outline-none focus:border-accent"
+        className="w-full bg-bg border border-border rounded-md px-2 py-1 text-sm text-text outline-none focus:border-accent"
       >
         {options.map((o) => (
           <option key={o.value} value={o.value}>

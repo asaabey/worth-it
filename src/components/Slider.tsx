@@ -15,8 +15,8 @@ export function Slider({ label, value, min, max, step = 1, format, hint, onChang
   return (
     <div className="mb-4">
       <div className="flex items-baseline justify-between mb-1">
-        <label className="text-sm text-gray-300">{label}</label>
-        <span className="text-sm font-mono text-white">{display}</span>
+        <label className="text-sm text-muted">{label}</label>
+        <span className="text-sm font-mono text-text">{display}</span>
       </div>
       <input
         type="range"
@@ -27,7 +27,7 @@ export function Slider({ label, value, min, max, step = 1, format, hint, onChang
         value={value}
         onChange={(e) => onChange(Number(e.target.value))}
       />
-      {hint && <div className="text-xs text-gray-500 mt-1">{hint}</div>}
+      {hint && <div className="text-xs text-dim mt-1">{hint}</div>}
     </div>
   );
 }

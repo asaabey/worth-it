@@ -5,6 +5,7 @@ import { type Property, makeDefaultProperty } from '../countries/au-property';
 import type { ProjectionInputs } from '../lib/projection';
 
 export type DisplayMode = 'real' | 'nominal';
+export type Theme = 'dark' | 'light';
 
 interface AppState {
   country: 'AU' | null;
@@ -18,6 +19,9 @@ interface AppState {
 
   displayMode: DisplayMode;
   setDisplayMode: (m: DisplayMode) => void;
+
+  theme: Theme;
+  toggleTheme: () => void;
 
   reset: () => void;
 }
@@ -75,6 +79,9 @@ export const useStore = create<AppState>()(
 
       displayMode: 'real',
       setDisplayMode: (m) => set({ displayMode: m }),
+
+      theme: 'dark',
+      toggleTheme: () => set((s) => ({ theme: s.theme === 'dark' ? 'light' : 'dark' })),
 
       reset: () => set({ inputs: defaultInputs, displayMode: 'real' }),
     }),

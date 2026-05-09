@@ -17,7 +17,15 @@ import { formatAUD } from '../lib/format';
 export function Chart() {
   const inputs = useStore((s) => s.inputs);
   const displayMode = useStore((s) => s.displayMode);
+  const theme = useStore((s) => s.theme);
   const rows = useMemo(() => project(inputs), [inputs]);
+
+  const isDark = theme === 'dark';
+  const gridStroke = isDark ? '#252b48' : '#e5e7eb';
+  const axisColor = isDark ? '#8a93b8' : '#6b7280';
+  const tooltipBg = isDark ? '#151a2e' : '#ffffff';
+  const tooltipBorder = isDark ? '#252b48' : '#d9deeb';
+  const tooltipText = isDark ? '#e6e9f2' : '#0b1020';
 
   const data = rows.map((r) => {
     const factor = displayMode === 'real'
@@ -54,15 +62,16 @@ export function Chart() {
               <stop offset="95%" stopColor="#f59e0b" stopOpacity={0.05} />
             </linearGradient>
           </defs>
-          <CartesianGrid stroke="#252b48" strokeDasharray="3 3" />
-          <XAxis dataKey="age" stroke="#8a93b8" tick={{ fontSize: 12 }} />
+          <CartesianGrid stroke={gridStroke} strokeDasharray="3 3" />
+          <XAxis dataKey="age" stroke={axisColor} tick={{ fontSize: 12 }} />
           <YAxis
-            stroke="#8a93b8"
+            stroke={axisColor}
             tick={{ fontSize: 12 }}
             tickFormatter={(v) => formatAUD(v, { compact: true })}
           />
           <Tooltip
-            contentStyle={{ background: '#151a2e', border: '1px solid #252b48', borderRadius: 8 }}
+            contentStyle={{ background: tooltipBg, border: `1px solid ${tooltipBorder}`, borderRadius: 8, color: tooltipText }}
+            labelStyle={{ color: tooltipText }}
             formatter={(value) => formatAUD(Number(value))}
             labelFormatter={(age) => `Age ${age}`}
           />

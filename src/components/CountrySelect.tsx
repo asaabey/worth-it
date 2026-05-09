@@ -1,4 +1,5 @@
 import { useStore } from '../store/useStore';
+import { ThemeToggle } from './ThemeToggle';
 
 const countries = [
   { code: 'AU', name: 'Australia', flag: '🇦🇺', enabled: true },
@@ -11,11 +12,14 @@ export function CountrySelect() {
   const setCountry = useStore((s) => s.setCountry);
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-6">
+    <div className="min-h-screen flex items-center justify-center p-6 relative">
+      <div className="absolute top-4 right-4">
+        <ThemeToggle />
+      </div>
       <div className="max-w-2xl w-full">
-        <h1 className="text-4xl font-bold mb-2 text-white">Wealth Projection</h1>
-        <p className="text-gray-400 mb-8">
-          See how your savings, investments and superannuation grow over time. Pick your country to start.
+        <h1 className="text-4xl font-bold mb-2 text-text">Worth It</h1>
+        <p className="text-muted mb-8">
+          See how your savings, investments, super and properties grow over time. Pick your country to start.
         </p>
 
         <div className="grid grid-cols-2 gap-4">
@@ -32,8 +36,8 @@ export function CountrySelect() {
               `}
             >
               <div className="text-3xl mb-2">{c.flag}</div>
-              <div className="text-lg font-semibold text-white">{c.name}</div>
-              <div className="text-xs text-gray-400 mt-1">
+              <div className="text-lg font-semibold text-text">{c.name}</div>
+              <div className="text-xs text-muted mt-1">
                 {c.enabled ? 'Available' : 'Coming soon'}
               </div>
             </button>
