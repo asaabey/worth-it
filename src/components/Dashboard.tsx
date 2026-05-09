@@ -2,6 +2,7 @@ import { useStore } from '../store/useStore';
 import { Inputs } from './Inputs';
 import { Chart } from './Chart';
 import { Summary } from './Summary';
+import { RetirementCashFlow } from './RetirementCashFlow';
 import { ThemeToggle } from './ThemeToggle';
 
 export function Dashboard() {
@@ -42,6 +43,7 @@ export function Dashboard() {
         <div className="space-y-6">
           <Summary />
           <Chart />
+          <RetirementCashFlow />
         </div>
       </div>
 

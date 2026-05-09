@@ -11,25 +11,22 @@ import {
   ReferenceLine,
 } from 'recharts';
 import { useStore } from '../store/useStore';
-import { project } from '../lib/projection';
+import { project, summarize } from '../lib/projection';
 import { formatAUD } from '../lib/format';
+import { useChartTheme } from '../lib/chartTheme';
 
 export function Chart() {
   const inputs = useStore((s) => s.inputs);
   const displayMode = useStore((s) => s.displayMode);
-  const theme = useStore((s) => s.theme);
-  const rows = useMemo(() => project(inputs), [inputs]);
-
-  const isDark = theme === 'dark';
-  const gridStroke = isDark ? '#252b48' : '#e5e7eb';
-  const axisColor = isDark ? '#8a93b8' : '#6b7280';
-  const tooltipBg = isDark ? '#151a2e' : '#ffffff';
-  const tooltipBorder = isDark ? '#252b48' : '#d9deeb';
-  const tooltipText = isDark ? '#e6e9f2' : '#0b1020';
+  const t = useChartTheme();
+  const { rows, summary } = useMemo(() => {
+    const rows = project(inputs);
+    return { rows, summary: summarize(rows, inputs) };
+  }, [inputs]);
 
   const data = rows.map((r) => {
     const factor = displayMode === 'real'
-      ? 1 / Math.pow(1 + inputs.inflation, r.age - inputs.currentAge)
+      ? 1 / Math.pow(1 + inputs.inflation, r.age - inputs.primary.currentAge)
       : 1;
     return {
       age: r.age,
@@ -40,52 +37,60 @@ export function Chart() {
     };
   });
 
+  const fadeOpacity = t.isDark ? 0.05 : 0.15;
+
   return (
     <div className="bg-panel border border-border rounded-xl p-4 h-[420px]">
       <ResponsiveContainer width="100%" height="100%">
         <AreaChart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
           <defs>
             <linearGradient id="g-super" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="#22d3ee" stopOpacity={0.7} />
-              <stop offset="95%" stopColor="#22d3ee" stopOpacity={0.05} />
+              <stop offset="5%" stopColor={t.superColor} stopOpacity={0.7} />
+              <stop offset="95%" stopColor={t.superColor} stopOpacity={fadeOpacity} />
             </linearGradient>
             <linearGradient id="g-invest" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="#7c5cff" stopOpacity={0.7} />
-              <stop offset="95%" stopColor="#7c5cff" stopOpacity={0.05} />
+              <stop offset="5%" stopColor={t.investColor} stopOpacity={0.7} />
+              <stop offset="95%" stopColor={t.investColor} stopOpacity={fadeOpacity} />
             </linearGradient>
             <linearGradient id="g-cash" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="#22c55e" stopOpacity={0.7} />
-              <stop offset="95%" stopColor="#22c55e" stopOpacity={0.05} />
+              <stop offset="5%" stopColor={t.cashColor} stopOpacity={0.7} />
+              <stop offset="95%" stopColor={t.cashColor} stopOpacity={fadeOpacity} />
             </linearGradient>
             <linearGradient id="g-prop" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.7} />
-              <stop offset="95%" stopColor="#f59e0b" stopOpacity={0.05} />
+              <stop offset="5%" stopColor={t.propertyColor} stopOpacity={0.7} />
+              <stop offset="95%" stopColor={t.propertyColor} stopOpacity={fadeOpacity} />
             </linearGradient>
           </defs>
-          <CartesianGrid stroke={gridStroke} strokeDasharray="3 3" />
-          <XAxis dataKey="age" stroke={axisColor} tick={{ fontSize: 12 }} />
+          <CartesianGrid stroke={t.gridStroke} strokeDasharray="3 3" />
+          <XAxis dataKey="age" stroke={t.axisColor} tick={{ fontSize: 12, fill: t.axisColor }} />
           <YAxis
-            stroke={axisColor}
-            tick={{ fontSize: 12 }}
+            stroke={t.axisColor}
+            tick={{ fontSize: 12, fill: t.axisColor }}
             tickFormatter={(v) => formatAUD(v, { compact: true })}
           />
           <Tooltip
-            contentStyle={{ background: tooltipBg, border: `1px solid ${tooltipBorder}`, borderRadius: 8, color: tooltipText }}
-            labelStyle={{ color: tooltipText }}
+            contentStyle={{ background: t.tooltipBg, border: `1px solid ${t.tooltipBorder}`, borderRadius: 8, color: t.tooltipText }}
+            labelStyle={{ color: t.tooltipText }}
+            itemStyle={{ color: t.tooltipText }}
             formatter={(value) => formatAUD(Number(value))}
             labelFormatter={(age) => `Age ${age}`}
           />
-          <Legend wrapperStyle={{ fontSize: 12 }} />
+          <Legend wrapperStyle={{ fontSize: 12, color: t.legendText }} />
           <ReferenceLine
-            x={inputs.retirementAge}
-            stroke="#f59e0b"
+            x={summary.householdRetirementAge}
+            stroke={t.warnLabel}
             strokeDasharray="3 3"
-            label={{ value: 'Retirement', position: 'top', fill: '#f59e0b', fontSize: 11 }}
+            label={{
+              value: inputs.partner ? 'Both retired' : 'Retirement',
+              position: 'top',
+              fill: t.warnLabel,
+              fontSize: 11,
+            }}
           />
-          <Area type="monotone" dataKey="Cash" stackId="1" stroke="#22c55e" fill="url(#g-cash)" />
-          <Area type="monotone" dataKey="Property" stackId="1" stroke="#f59e0b" fill="url(#g-prop)" />
-          <Area type="monotone" dataKey="Investments" stackId="1" stroke="#7c5cff" fill="url(#g-invest)" />
-          <Area type="monotone" dataKey="Super" stackId="1" stroke="#22d3ee" fill="url(#g-super)" />
+          <Area type="monotone" dataKey="Cash" stackId="1" stroke={t.cashColor} fill="url(#g-cash)" />
+          <Area type="monotone" dataKey="Property" stackId="1" stroke={t.propertyColor} fill="url(#g-prop)" />
+          <Area type="monotone" dataKey="Investments" stackId="1" stroke={t.investColor} fill="url(#g-invest)" />
+          <Area type="monotone" dataKey="Super" stackId="1" stroke={t.superColor} fill="url(#g-super)" />
         </AreaChart>
       </ResponsiveContainer>
     </div>

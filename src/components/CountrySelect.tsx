@@ -32,7 +32,7 @@ export function CountrySelect() {
                 p-6 rounded-xl border text-left transition
                 ${c.enabled
                   ? 'bg-panel border-border hover:border-accent hover:bg-panel2 cursor-pointer'
-                  : 'bg-panel/40 border-border/40 cursor-not-allowed opacity-50'}
+                  : 'bg-panel border-border cursor-not-allowed opacity-50'}
               `}
             >
               <div className="text-3xl mb-2">{c.flag}</div>

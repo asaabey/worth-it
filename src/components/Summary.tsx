@@ -41,9 +41,10 @@ export function Summary() {
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <Stat
-          label={`Net worth at age ${inputs.retirementAge}`}
+          label={`Net worth ${inputs.partner ? 'when both retired' : `at age ${summary.householdRetirementAge}`}`}
           value={formatAUD(retirementBalance, { compact: true })}
           tone="accent"
+          sub={inputs.partner ? `Primary age ${summary.householdRetirementAge}` : undefined}
         />
         <Stat
           label="Sustainable income (real)"

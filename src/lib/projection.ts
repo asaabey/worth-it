@@ -1,19 +1,24 @@
 import { AU, calcIncomeTaxAU } from '../countries/australia';
 import type { Property } from '../countries/au-property';
 
-export interface ProjectionInputs {
+export interface PersonInputs {
   currentAge: number;
   retirementAge: number;
-  endAge: number;
   annualIncome: number;
   salaryGrowth: number;
+  currentSuper: number;
+  superRate: number;
+}
+
+export interface ProjectionInputs {
+  primary: PersonInputs;
+  partner: PersonInputs | null;
+  endAge: number;
   monthlyInvestment: number;
   currentInvestments: number;
-  currentSuper: number;
   currentCash: number;
   expectedReturn: number;
   inflation: number;
-  superRate: number;
   withdrawalRate: number;
   properties: Property[];
 }
@@ -28,15 +33,21 @@ export interface PropertyState {
 }
 
 export interface YearRow {
-  age: number;
+  age: number; // primary's age — projection clock
+  partnerAge: number | null;
   year: number;
-  grossIncome: number;
+  primaryWorking: boolean;
+  partnerWorking: boolean;
+  householdRetired: boolean;
+
+  grossIncome: number; // household total
   netRental: number;
   taxableIncome: number;
+  tax: number;
   takeHome: number;
-  superContrib: number;
+  superContrib: number; // household total
   investContrib: number;
-  superBalance: number;
+  superBalance: number; // household total
   investBalance: number;
   cashBalance: number;
   propertyEquity: number;
@@ -45,6 +56,11 @@ export interface YearRow {
   properties: PropertyState[];
   netWorthNominal: number;
   netWorthReal: number;
+
+  drawdownInvest: number;
+  drawdownSuper: number;
+  retirementCashFlowNominal: number;
+  retirementCashFlowReal: number;
 }
 
 interface MortgageState {
@@ -54,10 +70,15 @@ interface MortgageState {
   annualPayment: number;
 }
 
+interface PersonState {
+  def: PersonInputs;
+  salary: number;
+  superBal: number;
+}
+
 function annualMortgagePayment(balance: number, rate: number, years: number): number {
   if (balance <= 0 || years <= 0) return 0;
   if (rate === 0) return balance / years;
-  // Standard amortization formula, annual periods
   return (balance * rate) / (1 - Math.pow(1 + rate, -years));
 }
 
@@ -75,13 +96,18 @@ export function project(inputs: ProjectionInputs): YearRow[] {
   const rows: YearRow[] = [];
   const startYear = new Date().getFullYear();
 
-  let salary = inputs.annualIncome;
-  let superBal = inputs.currentSuper;
+  const persons: PersonState[] = [
+    { def: inputs.primary, salary: inputs.primary.annualIncome, superBal: inputs.primary.currentSuper },
+    ...(inputs.partner
+      ? [{ def: inputs.partner, salary: inputs.partner.annualIncome, superBal: inputs.partner.currentSuper }]
+      : []),
+  ];
+
   let investBal = inputs.currentInvestments;
   const cashBal = inputs.currentCash;
   let retirementPool = 0;
+  let wasHouseholdRetired = false;
 
-  // Initialize property runtime state
   const propStates = inputs.properties.map((p) => ({
     def: p,
     value: p.value,
@@ -94,14 +120,17 @@ export function project(inputs: ProjectionInputs): YearRow[] {
     weeklyRent: p.weeklyRent,
   }));
 
-  for (let age = inputs.currentAge; age <= inputs.endAge; age++) {
-    const year = startYear + (age - inputs.currentAge);
-    const isWorking = age < inputs.retirementAge;
+  const horizonYears = inputs.endAge - inputs.primary.currentAge;
+
+  for (let offset = 0; offset <= horizonYears; offset++) {
+    const primaryAge = inputs.primary.currentAge + offset;
+    const partnerAge = inputs.partner ? inputs.partner.currentAge + offset : null;
+    const year = startYear + offset;
     const r = inputs.expectedReturn;
 
-    const grossIncome = isWorking ? salary : 0;
-    const superContribGross = isWorking ? grossIncome * inputs.superRate : 0;
-    const superContribNet = superContribGross * (1 - AU.superContributionsTax);
+    const personAges = persons.map((p) => p.def.currentAge + offset);
+    const personWorking = persons.map((p, i) => personAges[i] < p.def.retirementAge);
+    const householdRetired = personWorking.every((w) => !w);
 
     // ----- Property: appreciation, amortization, rental P&L -----
     let netRentalCashFlow = 0;
@@ -111,31 +140,22 @@ export function project(inputs: ProjectionInputs): YearRow[] {
     const perPropertyState: PropertyState[] = [];
 
     for (const ps of propStates) {
-      // Appreciation
       ps.value *= 1 + ps.def.growthRate;
 
-      // Mortgage
       const am = amortizeOneYear(ps.mortgage);
       ps.mortgage.balance = am.newBalance;
       if (ps.mortgage.yearsRemaining > 0) ps.mortgage.yearsRemaining -= 1;
 
-      // Rental + costs (only meaningful for investment)
       const annualRent = ps.weeklyRent * 52;
       const annualExpenses = ps.value * ps.def.expensesRate;
 
       if (ps.def.type === 'investment') {
         const cashFlow = annualRent - am.interest - annualExpenses - am.principal;
         netRentalCashFlow += cashFlow;
-        // Negative gearing: rent − interest − expenses − depreciation (depreciation is paper-only)
         const depreciation = ps.value * ps.def.depreciationRate;
         const taxableRental = annualRent - am.interest - annualExpenses - depreciation;
         totalPropertyTaxableIncome += taxableRental;
-        // Grow rent with inflation for next year
         ps.weeklyRent *= 1 + inputs.inflation;
-      } else {
-        // PPOR: mortgage payment + expenses are personal cash outflows (already in expenses elsewhere — keep separate)
-        // We don't deduct from take-home because user's expense slider is implicit.
-        // No tax effect.
       }
 
       totalPropertyValue += ps.value;
@@ -151,52 +171,116 @@ export function project(inputs: ProjectionInputs): YearRow[] {
       });
     }
 
-    // ----- Tax on combined taxable income (salary + net property taxable income) -----
-    const taxableIncome = grossIncome + totalPropertyTaxableIncome;
-    const tax = isWorking ? calcIncomeTaxAU(Math.max(taxableIncome, 0)) : 0;
-    // If totalPropertyTaxableIncome is negative (negative gearing), tax is reduced — already handled by passing combined to bracket calc.
-    const takeHome = grossIncome - tax + netRentalCashFlow;
+    // Property taxable income split equally across persons (joint ownership simplification)
+    const propertyShare = totalPropertyTaxableIncome / persons.length;
 
-    // ----- Investment contributions -----
-    const investContrib = isWorking ? inputs.monthlyInvestment * 12 : 0;
+    // ----- Per-person: income, tax, super -----
+    let totalGrossIncome = 0;
+    let totalSuperContrib = 0;
+    let totalSuperContribNet = 0;
+    let totalTax = 0;
+    let combinedTaxableIncome = 0;
 
-    // ----- Compound super + investments -----
-    superBal = superBal * (1 + r) + superContribNet * (1 + r / 2);
-    investBal = investBal * (1 + r) + investContrib * (1 + r / 2);
+    for (let i = 0; i < persons.length; i++) {
+      const ps = persons[i];
+      const isWorking = personWorking[i];
+      const grossIncome = isWorking ? ps.salary : 0;
+      const superContribGross = isWorking ? grossIncome * ps.def.superRate : 0;
+      const superContribNet = superContribGross * (1 - AU.superContributionsTax);
 
-    // ----- Retirement drawdown -----
-    if (!isWorking) {
-      if (age === inputs.retirementAge) {
-        retirementPool = superBal + investBal;
-      }
-      const annualDraw = retirementPool * inputs.withdrawalRate
-        * Math.pow(1 + inputs.inflation, age - inputs.retirementAge);
+      // Tax: salary + their share of property taxable income (negative = negative gearing offset)
+      // In retirement: only positive rental share is taxed (drawdowns assumed tax-free in v1)
+      const personTaxable = isWorking
+        ? grossIncome + propertyShare
+        : Math.max(propertyShare, 0);
+      const personTax = calcIncomeTaxAU(Math.max(personTaxable, 0));
 
-      let remaining = annualDraw;
-      const drawInvest = Math.min(investBal, remaining);
-      investBal -= drawInvest;
-      remaining -= drawInvest;
-      if (age >= AU.preservationAge && remaining > 0) {
-        const drawSuper = Math.min(superBal, remaining);
-        superBal -= drawSuper;
-      }
+      totalGrossIncome += grossIncome;
+      totalSuperContrib += superContribGross;
+      totalSuperContribNet += superContribNet;
+      totalTax += personTax;
+      combinedTaxableIncome += personTaxable;
     }
 
+    const takeHome = totalGrossIncome - totalTax + netRentalCashFlow;
+
+    // ----- Investment contributions (household) -----
+    const anyWorking = personWorking.some((w) => w);
+    const investContrib = anyWorking ? inputs.monthlyInvestment * 12 : 0;
+
+    // ----- Compound super (per person) + investments -----
+    for (let i = 0; i < persons.length; i++) {
+      const ps = persons[i];
+      const isWorking = personWorking[i];
+      const personContribNet = isWorking ? ps.salary * ps.def.superRate * (1 - AU.superContributionsTax) : 0;
+      ps.superBal = ps.superBal * (1 + r) + personContribNet * (1 + r / 2);
+    }
+    investBal = investBal * (1 + r) + investContrib * (1 + r / 2);
+
+    const totalSuperBalance = persons.reduce((sum, p) => sum + p.superBal, 0);
+
+    // ----- Retirement drawdown (household — only when nobody is working) -----
+    let drawdownInvest = 0;
+    let drawdownSuper = 0;
+    if (householdRetired) {
+      if (!wasHouseholdRetired) {
+        retirementPool = totalSuperBalance + investBal;
+      }
+      const yearsSinceRetired = persons.reduce(
+        (max, p, i) => Math.max(max, personAges[i] - p.def.retirementAge),
+        0,
+      );
+      const annualDraw = retirementPool * inputs.withdrawalRate
+        * Math.pow(1 + inputs.inflation, yearsSinceRetired);
+
+      let remaining = annualDraw;
+      drawdownInvest = Math.min(investBal, remaining);
+      investBal -= drawdownInvest;
+      remaining -= drawdownInvest;
+
+      // Super drawdown — pull from each person's super if they're past preservation age
+      if (remaining > 0) {
+        for (let i = 0; i < persons.length && remaining > 0; i++) {
+          if (personAges[i] >= AU.preservationAge) {
+            const ps = persons[i];
+            const drawFromThis = Math.min(ps.superBal, remaining);
+            ps.superBal -= drawFromThis;
+            drawdownSuper += drawFromThis;
+            remaining -= drawFromThis;
+          }
+        }
+      }
+    }
+    wasHouseholdRetired = householdRetired;
+
+    const retirementCashFlowNominal = householdRetired
+      ? drawdownInvest + drawdownSuper + netRentalCashFlow - totalTax
+      : 0;
+    const inflationFactor = Math.pow(1 + inputs.inflation, offset);
+    const retirementCashFlowReal = retirementCashFlowNominal / inflationFactor;
+
     const propertyEquity = totalPropertyValue - totalPropertyDebt;
-    const netWorthNominal = superBal + investBal + cashBal + propertyEquity;
-    const yearsFromStart = age - inputs.currentAge;
-    const netWorthReal = netWorthNominal / Math.pow(1 + inputs.inflation, yearsFromStart);
+    // Recompute total super after drawdown
+    const totalSuperAfterDraw = persons.reduce((sum, p) => sum + p.superBal, 0);
+    const netWorthNominal = totalSuperAfterDraw + investBal + cashBal + propertyEquity;
+    const netWorthReal = netWorthNominal / inflationFactor;
 
     rows.push({
-      age,
+      age: primaryAge,
+      partnerAge,
       year,
-      grossIncome,
+      primaryWorking: personWorking[0],
+      partnerWorking: persons.length > 1 ? personWorking[1] : false,
+      householdRetired,
+
+      grossIncome: totalGrossIncome,
       netRental: netRentalCashFlow,
-      taxableIncome,
+      taxableIncome: combinedTaxableIncome,
+      tax: totalTax,
       takeHome,
-      superContrib: superContribGross,
+      superContrib: totalSuperContrib,
       investContrib,
-      superBalance: superBal,
+      superBalance: totalSuperAfterDraw,
       investBalance: investBal,
       cashBalance: cashBal,
       propertyEquity,
@@ -205,9 +289,16 @@ export function project(inputs: ProjectionInputs): YearRow[] {
       properties: perPropertyState,
       netWorthNominal,
       netWorthReal,
+      drawdownInvest,
+      drawdownSuper,
+      retirementCashFlowNominal,
+      retirementCashFlowReal,
     });
 
-    if (isWorking) salary *= 1 + inputs.salaryGrowth;
+    // Salary growth at end of year for each working person
+    for (let i = 0; i < persons.length; i++) {
+      if (personWorking[i]) persons[i].salary *= 1 + persons[i].def.salaryGrowth;
+    }
   }
 
   return rows;
@@ -223,12 +314,16 @@ export interface Summary {
   finalNetWorthReal: number;
   fundedToAge: number | null;
   retirementPropertyEquityReal: number;
+  householdRetirementAge: number; // primary's age when household becomes fully retired
 }
 
 export function summarize(rows: YearRow[], inputs: ProjectionInputs): Summary {
-  const atRetirement = rows.find(r => r.age === inputs.retirementAge);
-  const retirementBalanceNominal = atRetirement?.netWorthNominal ?? 0;
-  const retirementBalanceReal = atRetirement?.netWorthReal ?? 0;
+  // First row where household is retired
+  const retirementRow = rows.find((r) => r.householdRetired) ?? rows[rows.length - 1];
+  const householdRetirementAge = retirementRow.age;
+
+  const retirementBalanceNominal = retirementRow.netWorthNominal;
+  const retirementBalanceReal = retirementRow.netWorthReal;
   const sustainableAnnualIncomeReal = retirementBalanceReal * inputs.withdrawalRate;
   const sustainableMonthlyIncomeReal = sustainableAnnualIncomeReal / 12;
 
@@ -246,14 +341,14 @@ export function summarize(rows: YearRow[], inputs: ProjectionInputs): Summary {
 
   let fundedToAge: number | null = null;
   for (const row of rows) {
-    if (row.age > inputs.retirementAge && row.netWorthNominal <= 0) {
+    if (row.householdRetired && row.netWorthNominal <= 0) {
       fundedToAge = row.age;
       break;
     }
   }
 
-  const retirementPropertyEquityReal = atRetirement
-    ? atRetirement.propertyEquity / Math.pow(1 + inputs.inflation, atRetirement.age - inputs.currentAge)
+  const retirementPropertyEquityReal = retirementRow
+    ? retirementRow.propertyEquity / Math.pow(1 + inputs.inflation, retirementRow.age - inputs.primary.currentAge)
     : 0;
 
   return {
@@ -266,5 +361,6 @@ export function summarize(rows: YearRow[], inputs: ProjectionInputs): Summary {
     finalNetWorthReal: rows[rows.length - 1]?.netWorthReal ?? 0,
     fundedToAge,
     retirementPropertyEquityReal,
+    householdRetirementAge,
   };
 }
